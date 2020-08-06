@@ -4,30 +4,26 @@ import sys
 import tempfile
 from glob import glob
 from subprocess import check_call
-
+import shutil
 import typer
-
+import PyInstaller.__main__
+import subprocess
 
 def is_mac():
     return sys.platform == "darwin"
 
-
 def is_linux():
     return sys.platform == "linux"
 
-
 def is_windows():
     return sys.platform == "win32"
-
 
 def verify_supported_platform():
     if not any((is_mac(), is_linux(), is_windows())):
         github_url = "https://github.com/garytyler/seevr-player/issues"
         raise RuntimeError(f"Platform unsupported. Request support at {github_url}")
 
-
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
 
 class BuildSettings(dict):
     def __init__(self):
@@ -131,18 +127,33 @@ cli = typer.Typer()
 
 @cli.command()
 def run():
+    if is_mac():
+        for i in ['PYTHON_VLC_LIB_PATH', 'PYTHON_VLC_MODULE_PATH']:
+            try:
+                del os.environ[i]
+            except KeyError:
+                pass
+
+    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+
     extra_args = sys.argv[2:]
     for arg in extra_args:
         sys.argv.remove(arg)
     os.environ["_BUILD_SCRIPT_RUN_ARGS"] = ",".join(extra_args)
-    check_call([sys.executable, APP_MODULE])
+
+    subprocess.call([sys.executable, APP_MODULE])
 
 
 @cli.command()
 def freeze():
-    dep_environ = DependencyEnvironment()
+    shutil.rmtree(os.path.join(BASE_DIR, "dist"), ignore_errors=True)
+    shutil.rmtree(os.path.join(BASE_DIR, "build"), ignore_errors=True)
+
+    if is_windows():
+        dep_environ = DependencyEnvironment()
+
+    delimiter = ";" if is_windows() else ":"
     command = [
-        "pyinstaller",
         "--log-level=INFO",
         "--noconfirm",
         "--clean",
@@ -151,25 +162,26 @@ def freeze():
         "--hidden-import=PyQt5.QtNetwork",
         "--hidden-import=PyQt5.QtCore",
         f"--name={BUILD_SETTINGS['app_name']}",
-        f"--icon='{os.path.join(BASE_DIR, 'icons', 'Icon.ico')}'",
-        f"--add-data='{os.path.join(BASE_DIR, 'media')};media'",
-        f"--add-data='{os.path.join(BASE_DIR, 'style')};style'",
-        f"--add-binary='{dep_environ['FFPROBE_BINARY_PATH']};ffmpeg'",
-        f"--additional-hooks-dir={os.path.join(BASE_DIR, 'hooks')}",
+        f"--icon={os.path.join(BASE_DIR, 'icons', 'Icon.ico')}",
+        f"--add-data={os.path.join(BASE_DIR, 'build.json')}{delimiter}.",
+        f"--add-data={os.path.join(BASE_DIR, 'media')}{delimiter}media",
+        f"--add-data={os.path.join(BASE_DIR, 'style')}{delimiter}style",
+        f"--add-binary=/Users/g/proj/seevr-player/ffmpeg/ffprobe{delimiter}ffmpeg",
     ]
-    # adding vlc binary paths args here satisfies warnings during bundling
-    command += [f"--paths={p}" for p in dep_environ.values() if os.path.isdir(p)]
-    command += [
-        f"--paths={os.path.dirname(p)}"
-        for p in dep_environ.values()
-        if os.path.isfile(p)
-    ]
-    # target script
-    command.append(os.path.join(BASE_DIR, "app", "__main__.py"))
-    if is_windows():
-        command = ["powershell.exe", "-c"] + command
-    check_call(command)
 
+    if is_windows():
+        command += [f"--additional-hooks-dir={os.path.join(BASE_DIR, 'hooks')}"]
+        # add vlc binary paths args to satisfy warnings during bundling with hooks
+        command += [f"--paths={p}" for p in dep_environ.values() if p and os.path.exists(p) and os.path.isdir(p)]
+        command += [
+            f"--paths={os.path.dirname(p)}"
+            for p in dep_environ.values()
+            if p and os.path.isfile(p)
+        ]
+
+    # call target script
+    command.append(os.path.join(BASE_DIR, "app", "__main__.py"))
+    PyInstaller.__main__.run(command)
 
 @cli.command()
 def installer():
@@ -180,7 +192,6 @@ def installer():
                 f"Eject mounted '{BUILD_SETTINGS['app_name']}' installer volumes"
                 f" from your system: {repr(mounted_dmg_paths)}"
             )
-
 
 if __name__ == "__main__":
     verify_supported_platform()

@@ -4,24 +4,19 @@ import os
 import sys
 from importlib import import_module
 from os import environ
-
+import os
 import config
 from PyQt5.QtWidgets import QApplication
 from utils import cached_property, platform
 
 log = logging.getLogger(__name__)
 
-
 class BaseAppContext:
     def is_frozen(self):
-        return getattr(sys, "frozen", False)
-
+        result =  getattr(sys, "frozen", False)
+        return result
     def get_frozen_resource(self, *path_parts):
-        exec_dir = os.path.dirname(sys.executable)
-        if platform.is_mac():
-            resources_dir = os.path.join(exec_dir, os.path.pardir, "Resources")
-        else:
-            resources_dir = os.path.join(exec_dir)
+        resources_dir = os.path.join(os.path.dirname(sys.executable))
         return os.path.join(resources_dir, *path_parts)
 
 
@@ -53,6 +48,7 @@ class AppContext(BaseAppContext):
         )
 
         if self.is_frozen():
+            print(sys.argv)
             media_paths = sys.argv[1:]
         else:
             build_script_run_args = environ.get("_BUILD_SCRIPT_RUN_ARGS", "").split(",")
@@ -94,32 +90,34 @@ class AppContext(BaseAppContext):
             vlc_args.append(disable_hw_accel_arg)
         self.vlcqt.initialize(args=vlc_args)
 
+
     @cached_property
     def vlcqt(self):
         if self.is_frozen():
-            if platform.is_linux():
+            if platform.is_linux(): # bundled vlc
                 environ["PYTHON_VLC_LIB_PATH"] = self.get_frozen_resource("libvlc.so")
                 environ["PYTHON_VLC_MODULE_PATH"] = self.get_frozen_resource("plugins")
-            elif platform.is_windows():
+            elif platform.is_windows(): # bundled vlc
                 environ["PYTHON_VLC_LIB_PATH"] = self.get_frozen_resource("libvlc.dll")
                 environ["PYTHON_VLC_MODULE_PATH"] = self.get_frozen_resource("plugins")
                 # for windows/macOS, load libvlccore into mem before llibvlc.dylib
                 # see python-vlc source: v3.0.7110, vlc.py, find_lib, line 178
                 ctypes.CDLL(self.get_frozen_resource("libvlccore.dll"))
-            elif platform.s_mac():
-                vlc_bin_dir = os.path.join(
-                    os.path.dirname(self.get_frozen_resource("MacOS"))
-                )
-                environ["PYTHON_VLC_LIB_PATH"] = os.path.join(
-                    vlc_bin_dir, "libvlc.dylib"
-                )
-                environ["PYTHON_VLC_MODULE_PATH"] = os.path.join(vlc_bin_dir, "plugins")
-                # for windows/macOS, load libvlccore into mem before llibvlc.dylib
+            elif platform.is_mac(): # separate vlc installation required
+                for i in ['PYTHON_VLC_MODULE_PATH', 'PYTHON_VLC_LIB_PATH']:
+                    try:
+                        del os.environ[i]
+                    except KeyError:
+                        pass
+                # for windows/macOS with bundled vlc, load libvlccore into mem before llibvlc.dylib
                 # see python-vlc source: v3.0.7110, vlc.py, find_lib, line 178
-                ctypes.CDLL(os.path.join(vlc_bin_dir, "libvlccore.dylib"))
+                # # ctypes.CDLL(os.path.join(vlc_bin_dir, "libvlccore.dylib"))
             else:
-                environ.unset("PYTHON_VLC_MODULE_PATH")
-                environ.unset("PYTHON_VLC_LIB_PATH")
+                for i in ['PYTHON_VLC_MODULE_PATH', 'PYTHON_VLC_LIB_PATH']:
+                    try:
+                        del os.environ[i]
+                    except KeyError:
+                        pass
                 log.warning(
                     f"Platform unsupported: '{sys.platform}'"
                     "If problems, try installing VLC."
@@ -135,7 +133,7 @@ class AppContext(BaseAppContext):
                 return self.get_frozen_resource("ffmpeg", "ffprobe.exe")
             else:
                 return self.get_frozen_resource("ffmpeg", "ffprobe")
-        return "ffprobe"
+        return os.path.join("ffmpeg","ffprobe")
 
     @cached_property
     def media_player(self):
@@ -143,6 +141,9 @@ class AppContext(BaseAppContext):
 
     @cached_property
     def stylesheet(self):
-        qss_path = self.get_frozen_resource("style", "dark.qss")
+        if self.is_frozen():
+            qss_path = self.get_frozen_resource("style", "dark.qss")
+        else:
+            qss_path = os.path.join("style", "dark.qss")
         with open(qss_path) as stylesheet:
             return stylesheet.read()

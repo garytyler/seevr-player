@@ -1,5 +1,5 @@
 import logging
-
+import os
 from base.docking import DockableWidget
 from base.popup import PopupWindowAction, PopupWindowWidget
 from gui import icons
@@ -223,7 +223,10 @@ class PlaylistWidget(QWidget):
         self.layout().addWidget(self.view)
 
     def add_media(self, paths=[]):
-        media_paths = files.get_media_paths(paths)
+        # print(f"{paths=}")
+        media_paths=paths
+        # [print(os.path.isfile(p)) for p in media_paths]
+        # media_paths = files.get_media_paths(paths)
         if not media_paths:
             log.error(f"No media paths found in {media_paths}")
             return
@@ -231,6 +234,7 @@ class PlaylistWidget(QWidget):
         model = self.view.model()
         for media_path in media_paths:
             item = MediaItem(media_path, ffprobe_cmd=self.ffprobe_cmd)
+            print(item)
             model.appendRow(item)
 
         first_item = self.view.model().item(0)

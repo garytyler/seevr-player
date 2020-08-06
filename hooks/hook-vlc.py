@@ -26,7 +26,7 @@ def hook(hook_api):
     libvlc_src_files = glob(join(dirname(libvlc_src_file), DYLIB_PATTERN))
     libvlc_binaries = []
     for f in libvlc_src_files:
-        binary_tuple = (f, ".")
+        binary_tuple = (f, "vlc")
         libvlc_binaries.append(binary_tuple)
     hook_api.add_binaries(libvlc_binaries)
 

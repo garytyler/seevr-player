@@ -61,12 +61,15 @@ def get_media_paths(paths):
             for i in os.scandir(path):
                 if i.is_file():
                     file_paths.append(i.path)
-
+    print(f"{file_paths}")
     media_paths = []
     for path in file_paths:
+        print(path)
         _media = vlcqt.Media(path)
+        print(_media)
         _media.parse()
         iter_tracks = _media.tracks_get()
+        print(iter_tracks)
         if not iter_tracks:
             continue
         media_paths.append(os.path.abspath(path))
